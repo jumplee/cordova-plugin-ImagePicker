@@ -5,6 +5,12 @@
 
 #define CDV_PHOTO_PREFIX @"cdv_photo_"
 
+#define iOS7Later ([UIDevice currentDevice].systemVersion.floatValue >= 7.0f)
+#define iOS8Later ([UIDevice currentDevice].systemVersion.floatValue >= 8.0f)
+#define iOS9Later ([UIDevice currentDevice].systemVersion.floatValue >= 9.0f)
+#define iOS9_1Later ([UIDevice currentDevice].systemVersion.floatValue >= 9.1f)
+#define iOS11Later ([UIDevice currentDevice].systemVersion.floatValue >= 11.0f)
+
 @interface ImagePicker ()<TZImagePickerControllerDelegate,UIImagePickerControllerDelegate,UIAlertViewDelegate,UINavigationControllerDelegate> {
     NSMutableArray *_selectedPhotos;
     NSMutableArray *_selectedAssets;
@@ -291,51 +297,54 @@
         else {
             [[TZImageManager manager] getOriginalPhotoWithAsset:asset newCompletion:^(UIImage *photo, NSDictionary *info, BOOL isDegraded) {
                 
-                NSData *compressed;
-                
-                CGSize targetSize = CGSizeMake(0, 0);
-                CGFloat maxHeight = self.height;
-                CGFloat maxWidth = self.width;
-                CGSize imageSize = photo.size;
-                CGFloat width = imageSize.width;
-                CGFloat height = imageSize.height;
-                CGFloat ratio=width/height;
-                //横向的图片
-                if(ratio>1){
-                    if(height>maxHeight){
-                        targetSize=CGSizeMake(width*maxHeight/height, maxHeight);
+                if(!isDegraded) {
+                    NSData *compressed;
+
+                    CGSize targetSize = CGSizeMake(0, 0);
+                    CGFloat maxHeight = self.height;
+                    CGFloat maxWidth = self.width;
+                    CGSize imageSize = photo.size;
+                    CGFloat width = imageSize.width;
+                    CGFloat height = imageSize.height;
+                    CGFloat ratio=width/height;
+                    //横向的图片
+                    if(ratio>1){
+                        if(height>maxHeight){
+                            targetSize=CGSizeMake(width*maxHeight/height, maxHeight);
+                        }
+                        
+                    }else{
+                        //竖向图片
+                        
+                        //宽度大于最大宽度
+                        if(width>maxWidth){
+                            targetSize=CGSizeMake(maxWidth, height*maxWidth/width);
+                        }
+                        
                     }
-                    
-                }else{
-                    //竖向图片
-                    
-                    //宽度大于最大宽度
-                    if(width>maxWidth){
-                        targetSize=CGSizeMake(maxWidth, height*maxWidth/width);
+                    //如果需要裁剪
+                    if(targetSize.width>0){
+                        UIGraphicsBeginImageContext(targetSize);
+                        [photo drawInRect:CGRectMake(0,0,targetSize.width,targetSize.height)];
+                        photo=UIGraphicsGetImageFromCurrentImageContext();
                     }
-                    
-                }
-                //如果需要裁剪
-                if(targetSize.width>0){
-                    UIGraphicsBeginImageContext(targetSize);
-                    [photo drawInRect:CGRectMake(0,0,targetSize.width,targetSize.height)];
-                    photo=UIGraphicsGetImageFromCurrentImageContext();
-                }
-                //压缩成jpg，压缩速度快，体积小，不用png压缩
-                compressed = UIImageJPEGRepresentation(photo, self.quality/100.f);
+                    //压缩成jpg，压缩速度快，体积小，不用png压缩
+                    compressed = UIImageJPEGRepresentation(photo, self.quality/100.f);
                 
-                NSString *fileName = [[[originName lastPathComponent] stringByDeletingPathExtension] stringByAppendingPathExtension:@"JPG"];
-                NSString *path = [self saveNSDataToFile:compressed withName:fileName];
-                NSDictionary* fileObj = @{
-                                          @"path": path,
-                                          @"width": @(photo.size.width * photo.scale),
-                                          @"height": @(photo.size.height * photo.scale),
-                                          @"size": @([compressed length])
-                                          };
-                [compressedPaths addObject:fileObj];
-                
-                index += 1;
-                [self saveCompressImage:assets currentIdx:index compressedPathArray:compressedPaths completion:completion];
+
+                    NSString *fileName = [[[originName lastPathComponent] stringByDeletingPathExtension] stringByAppendingPathExtension:@"JPG"];
+                    NSString *path = [self saveNSDataToFile:compressed withName:fileName];
+                    NSDictionary* fileObj = @{
+                                              @"path": path,
+                                              @"width": @(photo.size.width * photo.scale),
+                                              @"height": @(photo.size.height * photo.scale),
+                                              @"size": @([compressed length])
+                                              };
+                    [compressedPaths addObject:fileObj];
+
+                    index += 1;
+                    [self saveCompressImage:assets currentIdx:index compressedPathArray:compressedPaths completion:completion];
+                }
             }];
         }
     }
@@ -445,6 +454,7 @@
         _imagePickerVc.navigationBar.barTintColor = self.viewController.navigationController.navigationBar.barTintColor;
         _imagePickerVc.navigationBar.tintColor = self.viewController.navigationController.navigationBar.tintColor;
         UIBarButtonItem *tzBarItem, *BarItem;
+        
         if (iOS9Later) {
             tzBarItem = [UIBarButtonItem appearanceWhenContainedInInstancesOfClasses:@[[TZImagePickerController class]]];
             BarItem = [UIBarButtonItem appearanceWhenContainedInInstancesOfClasses:@[[UIImagePickerController class]]];
@@ -577,7 +587,7 @@
             [self checkTakePhoto];
         }
         // 拍照之前还需要检查相册权限
-    } else if ([TZImageManager authorizationStatus] == 2) { // 已被拒绝，没有相册权限，将无法保存拍的照片
+    } else if ([PHPhotoLibrary authorizationStatus] == 2) { // 已被拒绝，没有相册权限，将无法保存拍的照片
         if (iOS8Later) {
             UIAlertView * alert = [[UIAlertView alloc]initWithTitle:@"无法访问相册" message:@"请在iPhone的""设置-隐私-相册""中允许访问相册" delegate:self cancelButtonTitle:@"取消" otherButtonTitles:@"设置", nil];
             [alert show];
@@ -585,7 +595,7 @@
             UIAlertView * alert = [[UIAlertView alloc]initWithTitle:@"无法访问相册" message:@"请在iPhone的""设置-隐私-相册""中允许访问相册" delegate:self cancelButtonTitle:@"确定" otherButtonTitles:nil];
             [alert show];
         }
-    } else if ([TZImageManager authorizationStatus] == 0) { // 未请求过相册权限
+    } else if ([PHPhotoLibrary authorizationStatus] == 0) { // 未请求过相册权限
         [[TZImageManager manager] requestAuthorizationWithCompletion:^{
             [self checkTakePhoto];
         }];
